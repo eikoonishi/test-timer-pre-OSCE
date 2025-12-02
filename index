@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>pre-OSCEタイマー</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#ffffff;
+    --text:#111111;
+    --mut:#6a7a89;
+    --panel:#f6f8fb;
+    --row:#fbfcfe;
+    --border:#dfe6ee;
+  }
+  html,body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:"Noto Sans JP",system-ui,-apple-system,sans-serif;
+    margin:0;
+  }
+  .wrap{
+    max-width:1160px;
+    margin:0 auto;
+    padding:22px;
+  }
+  h1{
+    font-size:26px;
+    margin:0 0 6px;
+    font-weight:700;
+  }
+  .bar{
+    display:flex;
+    gap:14px;
+    align-items:center;
+    flex-wrap:wrap;
+  }
+  .bar .sp{flex:1;}
+  input,button{
+    background:#fff;
+    color:var(--text);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:8px 10px;
+    font-weight:700;
+    font-size:14px;
+  }
+  button{cursor:pointer;}
+  .row{
+    display:grid;
+    grid-template-columns:1fr 440px;
+    gap:16px;
+    align-items:center;
+    background:var(--row);
+    border:1px solid var(--border);
+    border-radius:18px;
+    padding:22px;
+    margin:12px 0;
+  }
+  .label{font-size:26px;}
+  .clock{
+    font-variant-numeric:tabular-nums;
+    font-size:64px;
+    text-align:right;
+    letter-spacing:.4px;
+  }
+  .active{
+    outline:3px solid #cfe0ff;
+    box-shadow:0 0 0 6px #e8f1ff inset;
+  }
+  .now{
+    margin-top:6px;
+    font-size:32px;
+    font-variant-numeric:tabular-nums;
+    font-weight:700;
+  }
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:18px;
+    padding:14px;
+    margin-top:12px;
+  }
+  table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:12px;
+  }
+  th,td{
+    border-bottom:1px solid var(--border);
+    padding:4px 6px;
+    text-align:left;
+    vertical-align:top;
+  }
+  th{background:#f0f4f9;}
+  .mut{color:var(--mut);}
+  .badge{
+    display:inline-block;
+    padding:3px 7px;
+    border-radius:999px;
+    background:#eef3ff;
+    border:1px solid #d6e2ff;
+    color:#2440a3;
+    font-weight:700;
+    font-size:12px;
+  }
+  #progressText{
+    font-size:22px;
+    margin-top:2px;
+    font-weight:700;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar">
+    <h1>pre-OSCEタイマー</h1>
+    <div class="sp"></div>
+    <span class="mut">状態：<span id="status">未開始</span>｜フェーズ：<span class="badge" id="phase">-</span></span>
+  </div>
+
+  <!-- 試験 / 次入室 / 試験開始 -->
+  <div id="row-exam" class="row">
+    <div class="label">試験　残り</div>
+    <div class="clock"><span id="examM">0</span>分 <span id="examS">00</span>秒</div>
+  </div>
+  <div id="row-enter" class="row">
+    <div class="label">次の受験者入室まで</div>
+    <div class="clock"><span id="enterM">0</span>分 <span id="enterS">00</span>秒</div>
+  </div>
+  <div id="row-pre" class="row">
+    <div class="label">試験開始まで</div>
+    <div class="clock"><span id="preM">0</span>分 <span id="preS">00</span>秒</div>
+  </div>
+
+  <!-- 進行状況 -->
+  <div class="row" style="grid-template-columns:1fr;">
+    <div>
+      <div class="label">進行状況</div>
+      <div id="progressText">-</div>
+    </div>
+  </div>
+
+  <!-- 現在時刻 -->
+  <div class="now">現在時刻：<span id="now">--:--:--</span></div>
+
+  <!-- 設定 -->
+  <div class="panel">
+    <div class="bar" style="gap:16px">
+      <div>
+        <div class="mut">実施日</div>
+        <input id="runDate" type="date" />
+      </div>
+      <div>
+        <div class="mut">最初の入室時間（あー1）</div>
+        <!-- デフォルト：10:25 -->
+        <input id="firstEnter" type="time" step="1" value="10:25:00" />
+      </div>
+      <div class="sp"></div>
+      <button id="arm">開始</button>
+      <button id="reset">リセット</button>
+    </div>
+  </div>
+
+  <!-- スケジュール確認用 -->
+  <div class="panel">
+    <div class="mut" style="margin-bottom:6px;">スケジュール一覧（確認用）</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:150px">時刻</th>
+          <th style="width:70px">進行</th>
+          <th style="width:70px">学生</th>
+          <th>セリフ</th>
+          <th style="width:160px">音声ファイル</th>
+        </tr>
+      </thead>
+      <tbody id="schedBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ========= ユーティリティ ========= */
+const el = id => document.getElementById(id);
+const txt = (id,v)=>{ const n=el(id); if(n) n.textContent=v; };
+const pad2 = n => String(Number(n)||0).padStart(2,'0');
+
+function fmtTime(ms){
+  const d=new Date(ms);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+function setRemain(which,sec){
+  sec = Math.max(0, Math.floor(sec||0));
+  const m = Math.floor(sec/60), s = sec%60;
+  if(which==="exam"){  txt("examM",m);  txt("examS",pad2(s)); }
+  if(which==="enter"){ txt("enterM",m); txt("enterS",pad2(s)); }
+  if(which==="pre"){   txt("preM",m);   txt("preS",pad2(s)); }
+}
+function clearActive(){ ["row-exam","row-enter","row-pre"].forEach(i=>el(i).classList.remove("active")); }
+function setActive(id, phaseLabel){
+  clearActive(); el(id).classList.add("active");
+  txt("phase", phaseLabel||"-");
+}
+
+/* ========= 時間計算 ========= */
+function msOf(dateStr, hh, mm, ss){
+  return new Date(
+    Number(dateStr.slice(0,4)),
+    Number(dateStr.slice(5,7))-1,
+    Number(dateStr.slice(8,10)),
+    Number(hh||0), Number(mm||0), Number(ss||0), 0
+  ).getTime();
+}
+
+/* ========= 元のタイムテーブル（あー1入室 10:25:00 前提の時刻） ========= */
+/* audio が空文字の行は「音声なし」（セリフだけ表示） */
+const template = [
+  { time:"10:05:00", progress:"準備",    student:"準備", speech:"評価者、模擬患者、運営補助者が揃った試験室から、室内の顔合わせ、打合せを開始してください。", audio:"presen.mp3" },
+  { time:"10:09:00", progress:"音声確認",student:"-",    speech:"音声確認、入室1分前です。", audio:"kakunin-enter1.mp3" },
+  { time:"10:10:00", progress:"音声確認",student:"-",    speech:"（♪）音声確認、入室してください。（受験者役の入室はありません）", audio:"kakunin-enter.mp3" },
+  { time:"10:11:00", progress:"音声確認",student:"-",    speech:"（♪）音声確認、開始です。", audio:"kakunin-kaishi.mp3" },
+  { time:"10:12:00", progress:"音声確認",student:"-",    speech:"音声確認、終了1分前です。", audio:"kakunin-finish1.mp3" },
+  { time:"10:13:00", progress:"音声確認",student:"-",    speech:"（♪）音声確認、終了です。退室してください。以上で音声・会場確認を終了いたします。評価者は引き続き、試験室内での最終打合せを行ってください。", audio:"kakunin-exit.mp3" },
+
+  { time:"10:15:00", progress:"入室前", student:"-", speech:"試験開始10分前です。試験は10：25から開始されますので、ご準備をお願いします。", audio:"kaishi10AM.mp3" },
+  { time:"10:20:00", progress:"入室前", student:"-", speech:"入室5分前です。誘導係は、第1グループ・あ班の受験者15名を受験者直前待機場所に迎えに行き、各試験室前へ誘導を開始してください。", audio:"kaishi5-yudoA.mp3" },
+  { time:"10:24:00", progress:"入室前", student:"-", speech:"入室1分前です。", audio:"enter1.mp3" },
+
+  { time:"10:25:00", progress:"あー1", student:"あー1", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"10:26:00", progress:"あー1", student:"あー1", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"10:30:00", progress:"あー1", student:"あー1", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"10:31:00", progress:"あー1", student:"あー1", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"10:32:00", progress:"あー2", student:"あー2", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"10:33:00", progress:"あー2", student:"あー2", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"10:37:00", progress:"あー2", student:"あー2", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"10:38:00", progress:"あー2", student:"あー2", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"10:39:00", progress:"あー3", student:"あー3", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"10:40:00", progress:"あー3", student:"あー3", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"10:44:00", progress:"あー3", student:"あー3", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"10:45:00", progress:"あー3", student:"あー3", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"10:46:00", progress:"あー4", student:"あー4", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"10:47:00", progress:"あー4", student:"あー4", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"10:51:00", progress:"あー4", student:"あー4", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"10:52:00", progress:"あー4", student:"あー4", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。受験者は誘導係の誘導に従い、移動してください。", audio:"exit-yudo.mp3" },
+
+  { time:"10:56:00", progress:"入室前", student:"-",   speech:"入室1分前です。", audio:"enter1.mp3" },
+
+  { time:"10:57:00", progress:"あー5", student:"あー5", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"10:58:00", progress:"あー5", student:"あー5", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"11:02:00", progress:"あー5", student:"あー5", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"11:03:00", progress:"あー5", student:"あー5", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"11:04:00", progress:"あー6", student:"あー6", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"11:05:00", progress:"あー6", student:"あー6", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"11:09:00", progress:"あー6", student:"あー6", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"11:10:00", progress:"あー6", student:"あー6", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"11:11:00", progress:"あー7", student:"あー7", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"11:12:00", progress:"あー7", student:"あー7", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"11:16:00", progress:"あー7", student:"あー7", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"11:17:00", progress:"あー7", student:"あー7", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"11:18:00", progress:"あー8", student:"あー8", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"11:19:00", progress:"あー8", student:"あー8", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"11:23:00", progress:"あー8", student:"あー8", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"11:24:00", progress:"休憩", student:"あー8", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。受験者は誘導係の誘導に従い、移動してください。", audio:"exit-rest1.mp3" },
+
+  { time:"11:36:00", progress:"入室前", student:"-", speech:"入室5分前です。誘導係は、第1グループ・い班の受験者15名を受験者直前待機場所に迎えに行き、各試験室前へ誘導を開始してください。", audio:"kaishi5-yudoI.mp3" },
+  { time:"11:40:00", progress:"入室前", student:"-", speech:"入室1分前です。", audio:"enter1.mp3" },
+
+  { time:"11:41:00", progress:"いー1", student:"いー1", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"11:42:00", progress:"いー1", student:"いー1", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"11:46:00", progress:"いー1", student:"いー1", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"11:47:00", progress:"いー1", student:"いー1", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"11:48:00", progress:"いー2", student:"いー2", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"11:49:00", progress:"いー2", student:"いー2", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"11:53:00", progress:"いー2", student:"いー2", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"11:54:00", progress:"いー2", student:"いー2", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"11:55:00", progress:"いー3", student:"いー3", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"11:56:00", progress:"いー3", student:"いー3", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"12:00:00", progress:"いー3", student:"いー3", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"12:01:00", progress:"いー3", student:"いー3", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"12:02:00", progress:"いー4", student:"いー4", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"12:03:00", progress:"いー4", student:"いー4", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"12:07:00", progress:"いー4", student:"いー4", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"12:08:00", progress:"いー4", student:"いー4", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。受験者は誘導係の誘導に従い、移動してください。", audio:"exit-yudo.mp3" },
+
+  { time:"12:12:00", progress:"入室前", student:"-", speech:"入室1分前です。", audio:"enter1.mp3" },
+
+  { time:"12:13:00", progress:"いー5", student:"いー5", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"12:14:00", progress:"いー5", student:"いー5", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"12:18:00", progress:"いー5", student:"いー5", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"12:19:00", progress:"いー5", student:"いー5", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"12:20:00", progress:"いー6", student:"いー6", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"12:21:00", progress:"いー6", student:"いー6", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"12:25:00", progress:"いー6", student:"いー6", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"12:26:00", progress:"いー6", student:"いー6", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"12:27:00", progress:"いー7", student:"いー7", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"12:28:00", progress:"いー7", student:"いー7", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"12:32:00", progress:"いー7", student:"いー7", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"12:33:00", progress:"いー7", student:"いー7", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"12:34:00", progress:"いー8", student:"いー8", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"12:35:00", progress:"いー8", student:"いー8", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"12:39:00", progress:"いー8", student:"いー8", speech:"終了1分前です。", audio:"finish1.mp3" },
+
+  { time:"12:40:00", progress:"昼休み", student:"いー8", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。受験者は誘導係の誘導に従い、移動してください。", audio:"exit-lunch.mp3" },
+
+  { time:"13:15:00", progress:"入室前", student:"-", speech:"試験開始10分前です。試験は13：25から開始されますので、ご準備をお願いします。", audio:"kaishi10PM.mp3" },
+  { time:"13:20:00", progress:"入室前", student:"-", speech:"入室5分前です。誘導係は、第2グループ・う班の受験者15名を受験者直前待機場所に迎えに行き、各試験室前へ誘導を開始してください。", audio:"kaishi5-yudoU.mp3" },
+  { time:"13:24:00", progress:"入室前", student:"-", speech:"入室1分前です。", audio:"enter1.mp3" },
+
+  { time:"13:25:00", progress:"うー1", student:"うー1", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"13:26:00", progress:"うー1", student:"うー1", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"13:30:00", progress:"うー1", student:"うー1", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"13:31:00", progress:"うー1", student:"うー1", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"13:32:00", progress:"うー2", student:"うー2", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"13:33:00", progress:"うー2", student:"うー2", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"13:37:00", progress:"うー2", student:"うー2", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"13:38:00", progress:"うー2", student:"うー2", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"13:39:00", progress:"うー3", student:"うー3", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"13:40:00", progress:"うー3", student:"うー3", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"13:44:00", progress:"うー3", student:"うー3", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"13:45:00", progress:"うー3", student:"うー3", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"13:46:00", progress:"うー4", student:"うー4", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"13:47:00", progress:"うー4", student:"うー4", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"13:51:00", progress:"うー4", student:"うー4", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"13:52:00", progress:"うー4", student:"うー4", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。受験者は誘導係の誘導に従い、移動してください。", audio:"exit-yudo.mp3" },
+
+  { time:"13:56:00", progress:"入室前", student:"-", speech:"入室1分前です。", audio:"enter1.mp3" },
+
+  { time:"13:57:00", progress:"うー5", student:"うー5", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"13:58:00", progress:"うー5", student:"うー5", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"14:02:00", progress:"うー5", student:"うー5", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"14:03:00", progress:"うー5", student:"うー5", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"14:04:00", progress:"うー6", student:"うー6", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"14:05:00", progress:"うー6", student:"うー6", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"14:09:00", progress:"うー6", student:"うー6", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"14:10:00", progress:"うー6", student:"うー6", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"14:11:00", progress:"うー7", student:"うー7", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"14:12:00", progress:"うー7", student:"うー7", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"14:16:00", progress:"うー7", student:"うー7", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"14:17:00", progress:"うー7", student:"うー7", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"14:18:00", progress:"うー8", student:"うー8", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"14:19:00", progress:"うー8", student:"うー8", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"14:23:00", progress:"うー8", student:"うー8", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"14:24:00", progress:"休憩",  student:"うー8", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。受験者は誘導係の誘導に従い、移動してください。", audio:"exit-rest2.mp3" },
+
+  { time:"14:36:00", progress:"入室前", student:"-", speech:"入室5分前です。誘導係は、第2グループ・え班の受験者15名を受験者直前待機場所に迎えに行き、各試験室前へ誘導を開始してください。", audio:"kaishi5-yudoE.mp3" },
+  { time:"14:40:00", progress:"入室前", student:"-", speech:"入室1分前です。", audio:"enter1.mp3" },
+
+  { time:"14:41:00", progress:"えー1", student:"えー1", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"14:42:00", progress:"えー1", student:"えー1", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"14:46:00", progress:"えー1", student:"えー1", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"14:47:00", progress:"えー1", student:"えー1", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"14:48:00", progress:"えー2", student:"えー2", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"14:49:00", progress:"えー2", student:"えー2", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"14:53:00", progress:"えー2", student:"えー2", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"14:54:00", progress:"えー2", student:"えー2", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"14:55:00", progress:"えー3", student:"えー3", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"14:56:00", progress:"えー3", student:"えー3", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"15:00:00", progress:"えー3", student:"えー3", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"15:01:00", progress:"えー3", student:"えー3", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"15:02:00", progress:"えー4", student:"えー4", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"15:03:00", progress:"えー4", student:"えー4", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"15:07:00", progress:"えー4", student:"えー4", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"15:08:00", progress:"えー4", student:"えー4", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。受験者は誘導係の誘導に従い、移動してください。", audio:"exit-yudo.mp3" },
+
+  { time:"15:12:00", progress:"入室前", student:"-", speech:"入室1分前です。", audio:"enter1.mp3" },
+
+  { time:"15:13:00", progress:"えー5", student:"えー5", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"15:14:00", progress:"えー5", student:"えー5", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"15:18:00", progress:"えー5", student:"えー5", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"15:19:00", progress:"えー5", student:"えー5", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"15:20:00", progress:"えー6", student:"えー6", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"15:21:00", progress:"えー6", student:"えー6", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"15:25:00", progress:"えー6", student:"えー6", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"15:26:00", progress:"えー6", student:"えー6", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"15:27:00", progress:"えー7", student:"えー7", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"15:28:00", progress:"えー7", student:"えー7", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"15:32:00", progress:"えー7", student:"えー7", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"15:33:00", progress:"えー7", student:"えー7", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。", audio:"exit.mp3" },
+
+  { time:"15:34:00", progress:"えー8", student:"えー8", speech:"（♪）入室してください。", audio:"enter.mp3" },
+  { time:"15:35:00", progress:"えー8", student:"えー8", speech:"（♪）開始です。", audio:"start.mp3" },
+  { time:"15:39:00", progress:"えー8", student:"えー8", speech:"終了1分前です。", audio:"finish1.mp3" },
+  { time:"15:40:00", progress:"試験終了", student:"えー8", speech:"（♪）終了です。退室してください。評価表の確認を行ってください。受験者は誘導係の誘導に従い、移動してください。", audio:"all-finish.mp3" }
+];
+
+/* ========= 実行用データ ========= */
+let schedule = []; // {time, progress, student, speech, audio}
+let slots = [];    // {stu, E, S, R}
+let fired = new Set();
+let armed = false;
+
+function msFromTimeStr(dateStr, t){
+  const [h,m,s] = t.split(":").map(v=>parseInt(v||"0",10));
+  return msOf(dateStr,h,m,s);
+}
+
+/* ========= スケジュール生成 ========= */
+const REF_FIRST_ENTER = "10:25:00"; // テンプレート上のあー1入室時刻
+
+function buildDay(){
+  schedule=[]; slots=[]; fired.clear();
+  const dateStr = el("runDate").value;
+  const f = el("firstEnter").value;
+  if(!dateStr || !f) return false;
+
+  const baseFirst = msFromTimeStr(dateStr,f);
+  const refFirst  = msFromTimeStr(dateStr,REF_FIRST_ENTER);
+  const delta = baseFirst - refFirst;
+
+  for(const row of template){
+    const tMs = msFromTimeStr(dateStr,row.time) + delta;
+    schedule.push({
+      time:tMs,
+      progress:row.progress,
+      student:row.student,
+      speech:row.speech,
+      audio:row.audio
+    });
+  }
+
+  // 試験スロット作成（start.mp3 を基準に 5分）
+  const examStarts = schedule.filter(r=>r.audio==="start.mp3" && r.student && r.student!=="-");
+  for(const ev of examStarts){
+    const S = ev.time;
+    // 同じ学生の直前の入室（enter.mp3）を探す
+    let E = S - 60*1000; // デフォルト 1分前
+    for(let i=schedule.length-1;i>=0;i--){
+      const r = schedule[i];
+      if(r.time < S && r.student===ev.student && r.audio==="enter.mp3"){
+        E = r.time; break;
+      }
+    }
+    const R = S + 5*60*1000;
+    slots.push({ stu:ev.student, E, S, R });
+  }
+
+  // 時刻順に並べ直し
+  schedule.sort((a,b)=>a.time-b.time);
+  slots.sort((a,b)=>a.E-b.E);
+  return true;
+}
+
+/* ========= スケジュール描画 ========= */
+function renderSchedule(){
+  const tb = el("schedBody");
+  tb.innerHTML="";
+  for(const r of schedule){
+    const tr=document.createElement("tr");
+    tr.innerHTML = `
+      <td>${fmtTime(r.time)}</td>
+      <td>${r.progress}</td>
+      <td>${r.student}</td>
+      <td>${r.speech}</td>
+      <td>${r.audio}</td>
+    `;
+    tb.appendChild(tr);
+  }
+}
+
+/* ========= オーディオ ========= */
+const audioCache = {};
+const basePath = "./"; // HTML と同じフォルダに mp3 を置く
+
+function preloadAudios(){
+  const seen = new Set();
+  for(const r of schedule){
+    if(r.audio && !seen.has(r.audio)){
+      seen.add(r.audio);
+      const src = encodeURI(basePath + r.audio);
+      const a = new Audio(src);
+      a.preload="auto"; a.load();
+      audioCache[r.audio]=a;
+    }
+  }
+}
+function primeAudio(){
+  const keys = Object.keys(audioCache);
+  if(keys.length===0) return;
+  const a = audioCache[keys[0]];
+  try{
+    a.volume=0.01; a.currentTime=0;
+    a.play().then(()=>{a.pause(); a.currentTime=0; a.volume=1.0;}).catch(()=>{});
+  }catch(e){}
+}
+function playAudioFile(name){
+  const a = audioCache[name];
+  if(!a) return;
+  try{ a.currentTime=0; a.play().catch(()=>{}); }catch(e){}
+}
+
+/* ========= タイマー＆アナウンス駆動 ========= */
+// ★ ここが今回のポイント：3つのタイマーの動きを状態で切り替え
+function updateClocks(){
+  const now = new Date();
+  txt("now", `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`);
+
+  if(!armed || schedule.length===0 || slots.length===0){
+    return;
+  }
+
+  const nowMs = Date.now();
+
+  // ---- アナウンス（1回だけ再生）----
+  for(const r of schedule){
+    if(r.time <= nowMs && !fired.has(r.time)){
+      fired.add(r.time);
+      if(r.audio) playAudioFile(r.audio);
+    }
+  }
+
+  // ---- スロットから状態を判定 ----
+  let examIndex = -1;        // 試験中スロット
+  let preIndex = -1;         // 入室済み〜試験開始待ち（1分）
+  let gapIndex = -1;         // 直前スロット i の試験終了〜次スロット(i+1)入室の間
+
+  for(let i=0;i<slots.length;i++){
+    const sl = slots[i];
+    // 試験中 S〜R
+    if(sl.S <= nowMs && nowMs < sl.R){
+      examIndex = i;
+    }
+    // 入室〜開始 E〜S
+    if(sl.E <= nowMs && nowMs < sl.S){
+      preIndex = i;
+    }
+    // 退室〜次入室 R(i)〜E(i+1)
+    if(i<slots.length-1){
+      const next = slots[i+1];
+      if(sl.R <= nowMs && nowMs < next.E){
+        gapIndex = i;
+      }
+    }
+  }
+
+  // ---- タイマー表示の初期化 ----
+  clearActive();
+  setRemain("exam",0);
+  setRemain("enter",0);
+  setRemain("pre",0);
+
+  // 「試験 残り」：試験開始後（S〜R）のみ、5分からカウントダウン
+  if(examIndex>=0){
+    const sl = slots[examIndex];
+    const remainExam = Math.ceil((sl.R - nowMs)/1000);
+    setRemain("exam",remainExam);
+    setActive("row-exam","試験中");
+  }
+
+  // 「試験開始まで」：受験者が入室してから（E〜S）の1分だけカウントダウン
+  if(preIndex>=0){
+    const sl = slots[preIndex];
+    const remainPre = Math.ceil((sl.S - nowMs)/1000);
+    setRemain("pre",remainPre);
+    if(examIndex<0) setActive("row-pre","開始待ち");
+  }
+
+  // 「次の受験者入室まで」：前の試験が終了してから、次の入室まで（R〜E_next）のみカウントダウン
+  if(gapIndex>=0){
+    const cur = slots[gapIndex];
+    const next = slots[gapIndex+1];
+    const remainEnter = Math.ceil((next.E - nowMs)/1000);
+    setRemain("enter",remainEnter);
+    if(examIndex<0 && preIndex<0) setActive("row-enter","次入室待ち");
+  }
+
+  // ---- 進行状況のテキスト ----
+  let progress="-";
+
+  if(examIndex>=0){
+    const sl = slots[examIndex];
+    progress = `${sl.stu} 試験中`;
+  }else if(preIndex>=0){
+    const sl = slots[preIndex];
+    progress = `${sl.stu} 入室済み（開始待ち）`;
+  }else if(gapIndex>=0){
+    const next = slots[gapIndex+1];
+    progress = `次は ${next.stu} 入室`;
+  }else{
+    // まだ最初のスロット前 or 全て終了後
+    const first = slots[0];
+    const last  = slots[slots.length-1];
+    if(nowMs < first.E){
+      progress = `開始前（最初は ${first.stu}）`;
+    }else if(nowMs >= last.R){
+      progress = "全ての試験が終了しました";
+    }
+  }
+
+  txt("progressText",progress);
+}
+
+/* ========= 操作 ========= */
+function arm(){
+  const ok = buildDay();
+  if(!ok){
+    alert("実施日と最初の入室時間（あー1）を入力してください。");
+    return;
+  }
+  renderSchedule();
+  preloadAudios();
+  primeAudio();
+
+  fired.clear();
+  const nowMs = Date.now();
+  // 過去に過ぎたアナウンスは「すでに流れたもの」として扱う
+  for(const r of schedule){
+    if(r.time <= nowMs) fired.add(r.time);
+  }
+
+  armed = true;
+  txt("status","進行中");
+}
+function resetAll(){
+  armed=false; fired.clear(); schedule=[]; slots=[];
+  txt("status","未開始"); txt("phase","-");
+  el("schedBody").innerHTML="";
+  clearActive();
+  setRemain("exam",0); setRemain("enter",0); setRemain("pre",0);
+  txt("progressText","-");
+}
+
+/* ========= 初期化 ========= */
+(function init(){
+  const d=new Date();
+  el("runDate").value = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+  el("arm").onclick = arm;
+  el("reset").onclick = resetAll;
+  setInterval(updateClocks,250);
+  updateClocks();
+})();
+</script>
+
+</body>
+</html>
