@@ -316,7 +316,7 @@ button {
     <div class="card">
       <h2>スケジュール情報</h2>
       <div class="info-text">
-        <strong>学生数:</strong> 4名（student1, student3, student4, student5）<br>
+        <strong>学生数:</strong> 2名（student1, student2）<br>
         <strong>イベント数:</strong> 12件<br>
         <strong>試験時間:</strong> 09:50 〜 10:14
       </div>
@@ -399,9 +399,9 @@ const baseSchedule = [
   { time: "10:05:00", phase: "student1", file: "finish1.mp3" },
   { time: "10:06:00", phase: "退室", file: "exit.mp3" },
   { time: "10:07:00", phase: "入室前", file: "enter1.mp3" },
-  { time: "10:08:00", phase: "student3", file: "enter.mp3" },
-  { time: "10:09:00", phase: "student4", file: "start.mp3" },
-  { time: "10:13:00", phase: "student5", file: "finish1.mp3" },
+  { time: "10:08:00", phase: "student2", file: "enter.mp3" },
+  { time: "10:09:00", phase: "student2", file: "start.mp3" },
+  { time: "10:13:00", phase: "student2", file: "finish1.mp3" },
   { time: "10:14:00", phase: "退室", file: "exit.mp3" }
 ];
 
@@ -671,6 +671,16 @@ function updateTimer() {
     if (examIndex < 0 && preIndex < 0) {
       setActive('cardNext');
       txt('statusText', `次: ${next.student}`);
+    }
+  } else if (examIndex < 0 && preIndex < 0 && slots.length > 0) {
+    // 試験開始前または全てのスロット終了後
+    const firstSlot = slots[0];
+    if (nowMs < firstSlot.E) {
+      // 最初の入室前
+      const remain = Math.ceil((firstSlot.E - nowMs) / 1000);
+      setTimer('next', remain);
+      setActive('cardNext');
+      txt('statusText', `次: ${firstSlot.student}`);
     }
   }
 }
