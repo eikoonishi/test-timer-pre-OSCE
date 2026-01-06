@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>医学部試験タイマー</title>
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #ffffff;
+  --bg-light: #f5f5f5;
+  --card: #ffffff;
+  --text: #000000;
+  --text-dim: #666666;
+  --accent: #000000;
+  --accent-light: #333333;
+  --border: #e0e0e0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+/* 設定画面 */
+#setupScreen {
+  display: block;
+}
+
+#setupScreen.hidden {
+  display: none;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 30px 0;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 30px;
+}
+
+.logo {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--text);
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 32px;
+  margin: 24px 0;
+}
+
+.card h2 {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 20px;
+}
+
+.form-group {
+  margin: 20px 0;
+}
+
+.form-group label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+input {
+  width: 100%;
+  max-width: 300px;
+  padding: 12px 16px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 16px;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+input:focus {
+  outline: none;
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.05);
+}
+
+button {
+  padding: 12px 24px;
+  font-size: 15px;
+  font-weight: 600;
+  border: 2px solid var(--text);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.btn-primary {
+  background: var(--text);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: var(--accent-light);
+}
+
+.btn-secondary {
+  background: white;
+  color: var(--text);
+  border: 2px solid var(--border);
+}
+
+.btn-secondary:hover {
+  background: var(--bg-light);
+}
+
+.info-text {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin-top: 10px;
+}
+
+/* タイマー画面 */
+#timerScreen {
+  display: none;
+}
+
+#timerScreen.active {
+  display: block;
+}
+
+.status-bar {
+  background: var(--text);
+  color: white;
+  border-radius: 8px;
+  padding: 32px;
+  margin-bottom: 32px;
+}
+
+.status-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.status-label {
+  font-size: 14px;
+  opacity: 0.8;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.status-value {
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  margin-top: 8px;
+}
+
+.current-time-large {
+  font-size: 56px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -1px;
+}
+
+.timer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 24px;
+  margin: 32px 0;
+}
+
+.timer-card {
+  background: white;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  padding: 40px 32px;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.timer-card.active {
+  border-color: var(--text);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.timer-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 24px;
+  letter-spacing: -0.3px;
+}
+
+.timer-display {
+  font-size: 84px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -2px;
+  line-height: 1;
+  margin: 24px 0;
+  color: var(--text);
+}
+
+.timer-display.warning {
+  color: #666;
+}
+
+.timer-display.danger {
+  color: var(--text);
+  font-weight: 900;
+}
+
+.timer-label {
+  font-size: 13px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+
+/* スケジュールテーブル */
+.schedule-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 16px;
+  font-size: 14px;
+}
+
+.schedule-table th {
+  background: var(--bg-light);
+  padding: 12px;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 2px solid var(--border);
+}
+
+.schedule-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.schedule-table tr:hover {
+  background: var(--bg-light);
+}
+
+.table-scroll {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+@media (max-width: 768px) {
+  .timer-display {
+    font-size: 48px;
+  }
+  
+  .current-time-large {
+    font-size: 36px;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- 設定画面 -->
+<div id="setupScreen">
+  <div class="container">
+    <div class="header">
+      <div class="logo">医学部試験タイマー</div>
+    </div>
+    
+    <div class="card">
+      <h2>開始時間の設定</h2>
+      <div class="form-group">
+        <label>最初の学生の入室時間</label>
+        <input type="time" id="startTime" value="10:00" onchange="updateSchedulePreview()">
+        <div class="info-text">
+          デフォルト: 10:00（student1の入室時間）<br>
+          この時間を変更すると、全スケジュールが自動的にスライドします。
+        </div>
+      </div>
+      
+      <button class="btn-primary" onclick="startTimer()">タイマー開始</button>
+    </div>
+    
+    <div class="card">
+      <h2>スケジュール情報</h2>
+      <div class="info-text">
+        <strong>学生数:</strong> 4名（student1, student3, student4, student5）<br>
+        <strong>イベント数:</strong> 12件<br>
+        <strong>試験時間:</strong> 09:50 〜 10:14
+      </div>
+    </div>
+    
+    <div class="card">
+      <h2>スケジュール一覧</h2>
+      <div class="table-scroll">
+        <table class="schedule-table">
+          <thead>
+            <tr>
+              <th>時刻</th>
+              <th>フェーズ</th>
+              <th>音声ファイル</th>
+            </tr>
+          </thead>
+          <tbody id="scheduleTableBody">
+            <!-- JavaScriptで動的に生成 -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- タイマー画面 -->
+<div id="timerScreen">
+  <div class="container">
+    <div class="status-bar">
+      <div class="status-info">
+        <div>
+          <div class="status-label">現在時刻</div>
+          <div class="current-time-large" id="currentTime">00:00:00</div>
+        </div>
+        <div>
+          <div class="status-label">進行状況</div>
+          <div class="status-value" id="statusText">準備中</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="timer-grid">
+      <div class="timer-card" id="cardExam">
+        <div class="timer-title">試験残り時間</div>
+        <div class="timer-display" id="examTimer">
+          <span id="examM">0</span>:<span id="examS">00</span>
+        </div>
+        <div class="timer-label">EXAM TIME REMAINING</div>
+      </div>
+      
+      <div class="timer-card" id="cardStart">
+        <div class="timer-title">試験開始まで</div>
+        <div class="timer-display">
+          <span id="startM">0</span>:<span id="startS">00</span>
+        </div>
+        <div class="timer-label">TIME UNTIL START</div>
+      </div>
+      
+      <div class="timer-card" id="cardNext">
+        <div class="timer-title">次の入室まで</div>
+        <div class="timer-display">
+          <span id="nextM">0</span>:<span id="nextS">00</span>
+        </div>
+        <div class="timer-label">NEXT ENTRY</div>
+      </div>
+    </div>
+    
+    <button class="btn-secondary" onclick="backToSetup()">⚙️ 設定に戻る</button>
+  </div>
+</div>
+
+<script>
+// エクセルからのスケジュールデータ（埋め込み）
+const baseSchedule = [
+  { time: "09:50:00", phase: "入室前", file: "kaishi10.mp3" },
+  { time: "09:55:00", phase: "入室前", file: "kaishi5.mp3" },
+  { time: "09:59:00", phase: "入室前", file: "enter1.mp3" },
+  { time: "10:00:00", phase: "student1", file: "enter.mp3" },
+  { time: "10:01:00", phase: "student1", file: "start.mp3" },
+  { time: "10:05:00", phase: "student1", file: "finish1.mp3" },
+  { time: "10:06:00", phase: "退室", file: "exit.mp3" },
+  { time: "10:07:00", phase: "入室前", file: "enter1.mp3" },
+  { time: "10:08:00", phase: "student3", file: "enter.mp3" },
+  { time: "10:09:00", phase: "student4", file: "start.mp3" },
+  { time: "10:13:00", phase: "student5", file: "finish1.mp3" },
+  { time: "10:14:00", phase: "退室", file: "exit.mp3" }
+];
+
+let schedule = [];
+let slots = [];
+let armed = false;
+let fired = new Set();
+let timerInterval = null;
+const audioCache = {};
+
+// ユーティリティ関数
+function el(id) { return document.getElementById(id); }
+function txt(id, text) { el(id).textContent = text; }
+function pad2(n) { return String(n).padStart(2, '0'); }
+
+function timeToSeconds(timeStr) {
+  const [h, m, s] = timeStr.split(':').map(Number);
+  return h * 3600 + m * 60 + s;
+}
+
+function formatTime(date) {
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+}
+
+// スケジュールテーブルを表示
+function displayScheduleTable() {
+  const tbody = el('scheduleTableBody');
+  tbody.innerHTML = '';
+  
+  baseSchedule.forEach(item => {
+    const tr = document.createElement('tr');
+    
+    const tdTime = document.createElement('td');
+    tdTime.textContent = item.time;
+    
+    const tdPhase = document.createElement('td');
+    tdPhase.textContent = item.phase;
+    
+    const tdFile = document.createElement('td');
+    tdFile.textContent = item.file;
+    
+    tr.appendChild(tdTime);
+    tr.appendChild(tdPhase);
+    tr.appendChild(tdFile);
+    
+    tbody.appendChild(tr);
+  });
+}
+
+// スケジュールプレビュー更新（開始時間でスライド）
+function updateSchedulePreview() {
+  const startTimeStr = el('startTime').value;
+  
+  if (!startTimeStr) {
+    displayScheduleTable();
+    return;
+  }
+  
+  // 基準時間（student1の入室時間: 10:00:00）
+  const baseStartSeconds = timeToSeconds("10:00:00");
+  
+  // 新しい開始時間
+  const newStartSeconds = timeToSeconds(startTimeStr + ":00");
+  
+  // 時間差（秒）
+  const deltaSeconds = newStartSeconds - baseStartSeconds;
+  
+  // テーブル更新
+  const tbody = el('scheduleTableBody');
+  tbody.innerHTML = '';
+  
+  baseSchedule.forEach(item => {
+    const originalSeconds = timeToSeconds(item.time);
+    const newSeconds = originalSeconds + deltaSeconds;
+    
+    // 新しい時刻を計算
+    const hours = Math.floor(newSeconds / 3600) % 24;
+    const minutes = Math.floor((newSeconds % 3600) / 60);
+    const seconds = newSeconds % 60;
+    const newTimeStr = `${pad2(hours)}:${pad2(minutes)}:${pad2(seconds)}`;
+    
+    const tr = document.createElement('tr');
+    
+    const tdTime = document.createElement('td');
+    tdTime.textContent = newTimeStr;
+    
+    const tdPhase = document.createElement('td');
+    tdPhase.textContent = item.phase;
+    
+    const tdFile = document.createElement('td');
+    tdFile.textContent = item.file;
+    
+    tr.appendChild(tdTime);
+    tr.appendChild(tdPhase);
+    tr.appendChild(tdFile);
+    
+    tbody.appendChild(tr);
+  });
+}
+
+// スケジュール作成（開始時間でスライド）
+function createSchedule(startTimeStr) {
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`;
+  
+  // 基準時間（student1の入室時間: 10:00:00）
+  const baseStartSeconds = timeToSeconds("10:00:00");
+  
+  // 新しい開始時間
+  const newStartSeconds = timeToSeconds(startTimeStr + ":00");
+  
+  // 時間差（秒）
+  const deltaSeconds = newStartSeconds - baseStartSeconds;
+  
+  console.log(`スケジュールスライド: ${deltaSeconds}秒（${deltaSeconds / 60}分）`);
+  
+  schedule = baseSchedule.map(item => {
+    const originalSeconds = timeToSeconds(item.time);
+    const newSeconds = originalSeconds + deltaSeconds;
+    const newTime = new Date(`${dateStr}T${item.time}`);
+    newTime.setSeconds(newTime.getSeconds() + deltaSeconds);
+    
+    return {
+      time: newTime,
+      progress: item.phase,
+      audioFile: item.file
+    };
+  });
+  
+  schedule.sort((a, b) => a.time - b.time);
+}
+
+// スロット生成
+function generateSlots() {
+  slots = [];
+  
+  const studentEvents = schedule.filter(e => e.progress && (e.progress.includes('ー') || e.progress.toLowerCase().includes('student')));
+  const uniqueStudents = [...new Set(studentEvents.map(e => e.progress))];
+  
+  uniqueStudents.forEach(student => {
+    const events = schedule.filter(e => e.progress === student);
+    
+    const entryEvent = events.find(e => e.audioFile === 'enter.mp3');
+    const startEvent = events.find(e => e.audioFile === 'start.mp3');
+    const finishEvent = events.find(e => e.audioFile === 'finish1.mp3');
+    
+    if (entryEvent && startEvent && finishEvent) {
+      const exitTime = new Date(finishEvent.time.getTime() + 60000);
+      
+      slots.push({
+        student: student,
+        E: entryEvent.time.getTime(),
+        S: startEvent.time.getTime(),
+        R: exitTime.getTime()
+      });
+      
+      console.log(`${student}: 入室=${formatTime(entryEvent.time)} 開始=${formatTime(startEvent.time)} 終了=${formatTime(exitTime)}`);
+    }
+  });
+  
+  slots.sort((a, b) => a.E - b.E);
+  console.log(`スロット生成完了: ${slots.length}件`);
+}
+
+// タイマー開始
+function startTimer() {
+  const startTimeStr = el('startTime').value;
+  
+  if (!startTimeStr) {
+    alert('開始時間を設定してください');
+    return;
+  }
+  
+  createSchedule(startTimeStr);
+  generateSlots();
+  
+  el('setupScreen').classList.add('hidden');
+  el('timerScreen').classList.add('active');
+  
+  preloadAudios();
+  
+  armed = true;
+  fired.clear();
+  
+  const nowMs = Date.now();
+  schedule.forEach(event => {
+    if (event.time.getTime() <= nowMs) {
+      fired.add(event.time.getTime());
+    }
+  });
+  
+  updateTimer();
+  timerInterval = setInterval(updateTimer, 250);
+}
+
+// タイマー更新
+function updateTimer() {
+  const now = new Date();
+  txt('currentTime', formatTime(now));
+  
+  if (!armed || schedule.length === 0) return;
+  
+  const nowMs = now.getTime();
+  
+  // アナウンス再生
+  schedule.forEach(event => {
+    const eventMs = event.time.getTime();
+    if (eventMs <= nowMs && !fired.has(eventMs)) {
+      fired.add(eventMs);
+      if (event.audioFile) {
+        playAudio(event.audioFile);
+      }
+    }
+  });
+  
+  // スロット判定
+  let examIndex = -1;
+  let preIndex = -1;
+  let gapIndex = -1;
+  
+  slots.forEach((slot, i) => {
+    if (slot.S <= nowMs && nowMs < slot.R) {
+      examIndex = i;
+    }
+    if (slot.E <= nowMs && nowMs < slot.S) {
+      preIndex = i;
+    }
+    if (i < slots.length - 1) {
+      const next = slots[i + 1];
+      if (slot.R <= nowMs && nowMs < next.E) {
+        gapIndex = i;
+      }
+    }
+  });
+  
+  // タイマー表示クリア
+  clearActive();
+  setTimer('exam', 0);
+  setTimer('start', 0);
+  setTimer('next', 0);
+  
+  // 試験残り時間
+  if (examIndex >= 0) {
+    const slot = slots[examIndex];
+    const remain = Math.ceil((slot.R - nowMs) / 1000);
+    setTimer('exam', remain);
+    setActive('cardExam');
+    txt('statusText', `${slot.student} 試験中`);
+  }
+  
+  // 試験開始まで
+  if (preIndex >= 0) {
+    const slot = slots[preIndex];
+    const remain = Math.ceil((slot.S - nowMs) / 1000);
+    setTimer('start', remain);
+    if (examIndex < 0) {
+      setActive('cardStart');
+      txt('statusText', `${slot.student} 入室済み`);
+    }
+  }
+  
+  // 次の入室まで
+  if (gapIndex >= 0) {
+    const next = slots[gapIndex + 1];
+    const remain = Math.ceil((next.E - nowMs) / 1000);
+    setTimer('next', remain);
+    if (examIndex < 0 && preIndex < 0) {
+      setActive('cardNext');
+      txt('statusText', `次: ${next.student}`);
+    }
+  }
+}
+
+function clearActive() {
+  ['cardExam', 'cardStart', 'cardNext'].forEach(id => {
+    el(id).classList.remove('active');
+  });
+}
+
+function setActive(id) {
+  clearActive();
+  el(id).classList.add('active');
+}
+
+function setTimer(which, sec) {
+  sec = Math.max(0, Math.floor(sec || 0));
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  
+  if (which === 'exam') {
+    txt('examM', m);
+    txt('examS', pad2(s));
+    const display = el('examTimer');
+    display.classList.remove('warning', 'danger');
+    if (sec > 0 && sec <= 60) display.classList.add('danger');
+    else if (sec > 60 && sec <= 120) display.classList.add('warning');
+  }
+  if (which === 'start') {
+    txt('startM', m);
+    txt('startS', pad2(s));
+  }
+  if (which === 'next') {
+    txt('nextM', m);
+    txt('nextS', pad2(s));
+  }
+}
+
+// 音声再生
+function preloadAudios() {
+  const seen = new Set();
+  schedule.forEach(event => {
+    if (event.audioFile && !seen.has(event.audioFile)) {
+      seen.add(event.audioFile);
+      const audio = new Audio(`sounds/${event.audioFile}`);
+      audio.preload = 'auto';
+      audio.load();
+      audioCache[event.audioFile] = audio;
+    }
+  });
+}
+
+function playAudio(filename) {
+  const audio = audioCache[filename];
+  if (!audio) return;
+  try {
+    audio.currentTime = 0;
+    audio.play().catch(err => console.warn('Audio play failed:', err));
+  } catch (e) {}
+}
+
+function backToSetup() {
+  armed = false;
+  if (timerInterval) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+  el('timerScreen').classList.remove('active');
+  el('setupScreen').classList.remove('hidden');
+}
+
+// 初期化
+updateSchedulePreview();
+console.log('医学部試験タイマー 準備完了');
+</script>
+</body>
+</html>
